@@ -52,12 +52,39 @@ class Bandit(ABC):
 
 
 class Visualization:
+    """Visualization of the bandit experiments.
+
+    Parameters
+    ----------
+    epsilon_greedy : EpsilonGreedy
+        Epsilon-Greedy bandit after the experiment has been run.
+    thompson_sampling : ThompsonSampling
+        Thompson Sampling bandit after the experiment has been run.
+    """
 
     def __init__(self, epsilon_greedy, thompson_sampling):
+        """Store the two algorithms that will be visualized.
+
+        Parameters
+        ----------
+        epsilon_greedy : EpsilonGreedy
+            Epsilon-Greedy bandit after the experiment has been run.
+        thompson_sampling : ThompsonSampling
+            Thompson Sampling bandit after the experiment has been run.
+        """
         self.epsilon_greedy = epsilon_greedy
         self.thompson_sampling = thompson_sampling
 
     def plot1(self):
+        """Visualize the learning process of each algorithm.
+
+        For each algorithm, plots the estimated average reward of every
+        bandit over the trials, using a linear and a logarithmic x-axis.
+
+        Returns
+        -------
+        None
+        """
         algorithms = [
             self.epsilon_greedy,
             self.thompson_sampling
@@ -107,6 +134,15 @@ class Visualization:
             plt.show()
 
     def plot2(self):
+        """Compare Epsilon-Greedy and Thompson Sampling.
+
+        Left plot: cumulative rewards of both algorithms.
+        Right plot: cumulative regrets of both algorithms.
+
+        Returns
+        -------
+        None
+        """
 
         fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
@@ -149,8 +185,22 @@ class Visualization:
 
 
 class EpsilonGreedy(Bandit):
+    """Epsilon-Greedy bandit algorithm with epsilon decaying as 1/t.
+
+    Parameters
+    ----------
+    p : list of float
+        True mean reward of each bandit.
+    """
 
     def __init__(self, p):
+        """Initialize the algorithm state.
+
+        Parameters
+        ----------
+        p : list of float
+            True mean reward of each bandit.
+        """
         self.p = np.array(p, dtype=float)
 
         self.counts = np.zeros(len(p), dtype=int)
@@ -169,9 +219,27 @@ class EpsilonGreedy(Bandit):
         self.last_reward = None
 
     def __repr__(self):
+        """Return the name of the algorithm.
+
+        Returns
+        -------
+        str
+            Algorithm name.
+        """
         return "EpsilonGreedy Algorithm"
 
     def pull(self):
+        """Select a bandit and generate its reward.
+
+        With probability epsilon = 1/t a random bandit is explored,
+        otherwise the bandit with the highest estimate is exploited.
+        The reward is drawn from a Gaussian distribution.
+
+        Returns
+        -------
+        float
+            Observed reward of the selected bandit.
+        """
         self.t += 1
 
         # Epsilon decay: epsilon = 1/t
@@ -195,6 +263,15 @@ class EpsilonGreedy(Bandit):
         return reward
 
     def update(self):
+        """Update estimates, rewards, regrets and cumulative values.
+
+        Uses the last pulled bandit and its reward to update the
+        running average estimate and the stored statistics.
+
+        Returns
+        -------
+        None
+        """
         arm = self.last_arm
         reward = self.last_reward
 
@@ -223,6 +300,12 @@ class EpsilonGreedy(Bandit):
         self.estimate_history.append(self.estimates.copy())
 
     def experiment(self):
+        """Run the experiment for NUMBER_OF_TRIALS trials.
+
+        Returns
+        -------
+        None
+        """
         for _ in range(NUMBER_OF_TRIALS):
             self.pull()
             self.update()
@@ -232,6 +315,15 @@ class EpsilonGreedy(Bandit):
         )
 
     def report(self):
+        """Store the results in a CSV file and log the summary.
+
+        Appends {Bandit, Reward, Algorithm} rows to ``rewards.csv`` and
+        logs the cumulative and average reward and regret.
+
+        Returns
+        -------
+        None
+        """
         csv_path = Path(__file__).resolve().parent / "rewards.csv"
 
         file_exists = csv_path.exists() and csv_path.stat().st_size > 0
@@ -261,13 +353,40 @@ class EpsilonGreedy(Bandit):
             f"{sum(self.regrets):.2f}"
         )
 
+        logger.info(
+            f"Epsilon-Greedy average reward: "
+            f"{np.mean(self.rewards):.4f}"
+        )
+
+        logger.info(
+            f"Epsilon-Greedy average regret: "
+            f"{np.mean(self.regrets):.4f}"
+        )
+
 
 #--------------------------------------#
 
 
 class ThompsonSampling(Bandit):
+    """Thompson Sampling bandit algorithm with known precision.
+
+    Uses a Gaussian prior and a Gaussian likelihood with known
+    reward precision.
+
+    Parameters
+    ----------
+    p : list of float
+        True mean reward of each bandit.
+    """
 
     def __init__(self, p):
+        """Initialize the prior and the algorithm state.
+
+        Parameters
+        ----------
+        p : list of float
+            True mean reward of each bandit.
+        """
         self.p = np.array(p, dtype=float)
 
         # Prior parameters
@@ -290,9 +409,27 @@ class ThompsonSampling(Bandit):
         self.last_reward = None
 
     def __repr__(self):
+        """Return the name of the algorithm.
+
+        Returns
+        -------
+        str
+            Algorithm name.
+        """
         return "Thompson Sampling Algorithm"
 
     def pull(self):
+        """Select a bandit by sampling from the posteriors.
+
+        A value is sampled from the posterior of every bandit and the
+        bandit with the highest sample is chosen. The reward is drawn
+        from a Gaussian distribution.
+
+        Returns
+        -------
+        float
+            Observed reward of the selected bandit.
+        """
         sampled_values = []
 
         for arm in range(len(self.p)):
@@ -332,20 +469,26 @@ class ThompsonSampling(Bandit):
         return reward
 
     def update(self):
+        """Update posteriors, rewards, regrets and cumulative values.
+
+        Returns
+        -------
+        None
+        """
         arm = self.last_arm
         reward = self.last_reward
 
         # Update observations
         self.counts[arm] += 1
         self.reward_sums[arm] += reward
-        
+
         posterior_means = (
-        self.prior_mean * self.prior_precision
-        + self.reward_sums * REWARD_PRECISION
-) / (
-        self.prior_precision
-        + self.counts * REWARD_PRECISION
-)
+            self.prior_mean * self.prior_precision
+            + self.reward_sums * REWARD_PRECISION
+        ) / (
+            self.prior_precision
+            + self.counts * REWARD_PRECISION
+        )
 
         self.estimate_history.append(posterior_means.copy())
 
@@ -364,6 +507,12 @@ class ThompsonSampling(Bandit):
         self.cumulative_regrets.append(previous_regret + regret)
 
     def experiment(self):
+        """Run the experiment for NUMBER_OF_TRIALS trials.
+
+        Returns
+        -------
+        None
+        """
         for _ in range(NUMBER_OF_TRIALS):
             self.pull()
             self.update()
@@ -374,6 +523,15 @@ class ThompsonSampling(Bandit):
         )
 
     def report(self):
+        """Store the results in a CSV file and log the summary.
+
+        Appends {Bandit, Reward, Algorithm} rows to ``rewards.csv`` and
+        logs the cumulative and average reward and regret.
+
+        Returns
+        -------
+        None
+        """
         csv_path = Path(__file__).resolve().parent / "rewards.csv"
 
         file_exists = (
@@ -405,12 +563,31 @@ class ThompsonSampling(Bandit):
             f"{sum(self.regrets):.2f}"
         )
 
+        logger.info(
+            f"Thompson Sampling average reward: "
+            f"{np.mean(self.rewards):.4f}"
+        )
+
+        logger.info(
+            f"Thompson Sampling average regret: "
+            f"{np.mean(self.regrets):.4f}"
+        )
+
 
 
 
 
 
 def comparison():
+    """Run both algorithms and compare them.
+
+    Runs Epsilon-Greedy and Thompson Sampling, saves the results to
+    ``rewards.csv``, and generates the visual comparisons.
+
+    Returns
+    -------
+    None
+    """
 
     logger.info("Starting A/B testing experiment...")
 
